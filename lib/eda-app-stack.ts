@@ -26,13 +26,23 @@ export class EDAAppStack extends cdk.Stack {
         receiveMessageWaitTime: cdk.Duration.seconds(10),
     });
 
+      const mailerQ = new sqs.Queue(this, "mailer-q", {
+        receiveMessageWaitTime: cdk.Duration.seconds(10),
+    });
+
+    // SNS
       const newImageTopic = new sns.Topic(this, "NewImageTopic", {
         displayName: "New Image topic",
     }); 
 
     newImageTopic.addSubscription(new subs.SqsSubscription(imageProcessQueue));
+    newImageTopic.addSubscription(new subs.SqsSubscription(mailerQ));
 
+    const mailerTopic = new sns.Topic(this, "MailerTopic", {
+      displayName: "Mailer topic",
+    });
 
+    mailerTopic.addSubscription(new subs.SqsSubscription(mailerQ));
 
   // Lambda functions
 
@@ -47,6 +57,14 @@ export class EDAAppStack extends cdk.Stack {
       }
     );
 
+   const mailerFn = new lambdanode.NodejsFunction(this, "mailer", {
+      runtime: lambda.Runtime.NODEJS_16_X,
+      memorySize: 1024,
+      timeout: cdk.Duration.seconds(3),
+      entry: `${__dirname}/../lambdas/mailer.ts`,
+    });
+
+
     // S3 --> SQS
     imagesBucket.addEventNotification(
       s3.EventType.OBJECT_CREATED,
@@ -59,14 +77,31 @@ export class EDAAppStack extends cdk.Stack {
       maxBatchingWindow: cdk.Duration.seconds(5),
     });
 
+    const newImageMailEventSource = new events.SqsEventSource(mailerQ, {
+      batchSize: 5,
+      maxBatchingWindow: cdk.Duration.seconds(5),
+    }); 
+
     processImageFn.addEventSource(newImageEventSource);
+    mailerFn.addEventSource(newImageMailEventSource);
+    mailerFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "ses:SendEmail",
+          "ses:SendRawEmail",
+          "ses:SendTemplatedEmail",
+        ],
+        resources: ["*"],
+      })
+    );
+
 
     // Permissions
-
     imagesBucket.grantRead(processImageFn);
+    imagesBucket.grantRead(mailerFn);
 
     // Output
-    
     new cdk.CfnOutput(this, "bucketName", {
       value: imagesBucket.bucketName,
     });
