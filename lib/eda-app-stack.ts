@@ -70,6 +70,37 @@ export class EDAAppStack extends cdk.Stack {
  }
  );
 
+    //  NEW
+    const dlq = new sqs.Queue(this, "img-dlq", {
+      receiveMessageWaitTime: cdk.Duration.seconds(10),
+ });
+    // UPDATE
+    const queue = new sqs.Queue(this, "img-created-queue", {
+      receiveMessageWaitTime: cdk.Duration.seconds(10),
+      deadLetterQueue: {
+        queue: dlq,
+        maxReceiveCount: 1
+ }
+ });
+
+const rejectedImageFn = new lambdanode.NodejsFunction(
+  this,
+  "RejectedImagesFn",
+  {
+    runtime: lambda.Runtime.NODEJS_20_X,
+    entry: `${__dirname}/../lambdas/rejectedImages.ts`,
+    timeout: cdk.Duration.seconds(15),
+    memorySize: 128,
+  }
+);
+
+const rejectedImageEventSource = new events.SqsEventSource(dlq, {
+  batchSize: 5,
+  maxBatchingWindow: cdk.Duration.seconds(10),
+});
+
+rejectedImageFn.addEventSource(rejectedImageEventSource);
+
 
    const mailerFn = new lambdanode.NodejsFunction(this, "mailer", {
       runtime: lambda.Runtime.NODEJS_16_X,
