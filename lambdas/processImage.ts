@@ -1,5 +1,7 @@
 /* eslint-disable import/extensions, import/no-absolute-path */
 import { SQSHandler } from "aws-lambda";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
 import {
   GetObjectCommand,
   PutObjectCommandInput,
@@ -9,6 +11,23 @@ import {
 } from "@aws-sdk/client-s3";
 
 const s3 = new S3Client();
+
+const ddbDocClient = createDDbDocClient();
+
+
+function createDDbDocClient() {
+  const ddbClient = new DynamoDBClient({ region: process.env.REGION });
+  const marshallOptions = {
+    convertEmptyValues: true,
+    removeUndefinedValues: true,
+    convertClassInstanceToMap: true,
+ };
+  const unmarshallOptions = {
+    wrapNumbers: false,
+ };
+  const translateConfig = { marshallOptions, unmarshallOptions };
+  return DynamoDBDocumentClient.from(ddbClient, translateConfig);
+}
 
 export const handler: SQSHandler = async (event) => {
   console.log("Event ", JSON.stringify(event));

@@ -28,7 +28,7 @@ export const handler: SQSHandler = async (event: any) => {
 
     if (snsMessage.Records) {
       console.log("Record body ", JSON.stringify(snsMessage));
-      for (const s3Mmessage of snsMessage.Records) {
+      for (const s3Message of snsMessage.Records) {
         const s3e = s3Message.s3;
         const srcBucket = s3e.bucket.name;
         // Object key may have spaces or unicode non-ASCII characters.
