@@ -9,6 +9,7 @@ import * as sns from "aws-cdk-lib/aws-sns";
 import * as subs from "aws-cdk-lib/aws-sns-subscriptions";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as source from "aws-cdk-lib/aws-lambda-event-sources";
 
 import { Construct } from "constructs";
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
@@ -27,31 +28,24 @@ export class EDAAppStack extends cdk.Stack {
         receiveMessageWaitTime: cdk.Duration.seconds(10),
     });
 
-      const mailerQ = new sqs.Queue(this, "mailer-q", {
-        receiveMessageWaitTime: cdk.Duration.seconds(10),
-    });
-
     // SNS
       const newImageTopic = new sns.Topic(this, "NewImageTopic", {
         displayName: "New Image topic",
     }); 
 
     newImageTopic.addSubscription(new subs.SqsSubscription(imageProcessQueue));
-    newImageTopic.addSubscription(new subs.SqsSubscription(mailerQ));
 
     const mailerTopic = new sns.Topic(this, "MailerTopic", {
       displayName: "Mailer topic",
     });
 
-    mailerTopic.addSubscription(new subs.SqsSubscription(mailerQ));
-
   // Lambda functions
-
-        const imagesTable = new dynamodb.Table(this, "ImagesTable", {
+      const imagesTable = new dynamodb.Table(this, "ImagesTable", {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: "name", type: dynamodb.AttributeType.STRING },
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       tableName: "Imagess",
+      stream: dynamodb.StreamViewType.NEW_IMAGE,        //. UPDATE
  });
 
      const processImageFn = new lambdanode.NodejsFunction(
@@ -137,13 +131,7 @@ rejectedImageFn.addEventSource(rejectedImageEventSource);
       maxBatchingWindow: cdk.Duration.seconds(5),
     });
 
-    const newImageMailEventSource = new events.SqsEventSource(mailerQ, {
-      batchSize: 5,
-      maxBatchingWindow: cdk.Duration.seconds(5),
-    }); 
-
     processImageFn.addEventSource(newImageEventSource);
-    mailerFn.addEventSource(newImageMailEventSource);
     mailerFn.addToRolePolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -165,7 +153,7 @@ rejectedImageFn.addEventSource(rejectedImageEventSource);
       },
     })
  );
- 
+
   newImageTopic.addSubscription(
       new subs.SqsSubscription(imageProcessQueue, {
         filterPolicyWithMessageBody: {
@@ -186,24 +174,29 @@ rejectedImageFn.addEventSource(rejectedImageEventSource);
       })
  );
 
- newImageTopic.addSubscription(
-      new subs.SqsSubscription(mailerQ, {
-        filterPolicyWithMessageBody: {
-          Records: sns.FilterOrPolicy.policy({
-            s3: sns.FilterOrPolicy.policy({
-              object: sns.FilterOrPolicy.policy({
-                key: sns.FilterOrPolicy.filter(
-                  sns.SubscriptionFilter.stringFilter({
-                    matchPrefixes: ["image"],
-                  })
-                ),
-              }),
-            }),
-           }),
-         },
-        rawMessageDelivery: true,
-      })
- );
+//  newImageTopic.addSubscription(
+//       new subs.SqsSubscription(mailerQ, {
+//         filterPolicyWithMessageBody: {
+//           Records: sns.FilterOrPolicy.policy({
+//             s3: sns.FilterOrPolicy.policy({
+//               object: sns.FilterOrPolicy.policy({
+//                 key: sns.FilterOrPolicy.filter(
+//                   sns.SubscriptionFilter.stringFilter({
+//                     matchPrefixes: ["image"],
+//                   })
+//                 ),
+//               }),
+//             }),
+//            }),
+//          },
+//         rawMessageDelivery: true,
+//       })
+//  );
+     mailerFn.addEventSource(
+      new source.DynamoEventSource(imagesTable, {
+        startingPosition: lambda.StartingPosition.LATEST
+ })
+ )
 
     // Permissions
     imagesBucket.grantRead(processImageFn);
