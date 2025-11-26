@@ -38,6 +38,7 @@ export const handler: SQSHandler = async (event) => {
     if (snsMessage.Records) {
       console.log("Record body ", JSON.stringify(snsMessage));
       for (const s3Message of snsMessage.Records) {
+        try{
         const s3e = s3Message.s3;
         const srcBucket = s3e.bucket.name;
         // Object key may have spaces or unicode non-ASCII characters.
@@ -78,5 +79,5 @@ export const handler: SQSHandler = async (event) => {
         }
       }
     }
-  }
-;
+  };
+};

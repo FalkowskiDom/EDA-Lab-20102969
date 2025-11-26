@@ -70,6 +70,21 @@ export class EDAAppStack extends cdk.Stack {
  }
  );
 
+     const addMetadataFn = new lambdanode.NodejsFunction(
+      this,
+      "addMetadataFn",
+ {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        entry: `${__dirname}/../lambdas/addImageMetadata.ts`,
+        timeout: cdk.Duration.seconds(15),
+        memorySize: 128,
+        environment: {
+          TABLE_NAME: imagesTable.tableName,
+        },
+    }
+ );
+
+
     //  NEW
     const dlq = new sqs.Queue(this, "img-dlq", {
       receiveMessageWaitTime: cdk.Duration.seconds(10),
@@ -141,12 +156,63 @@ rejectedImageFn.addEventSource(rejectedImageEventSource);
       })
     );
 
+        newImageTopic.addSubscription(
+      new subs.LambdaSubscription(addMetadataFn, {
+        filterPolicy: {
+          metadata_type: sns.SubscriptionFilter.stringFilter({
+            allowlist: ["Caption", "Date", "Photographer"],
+      }),
+      },
+    })
+ );
+ 
+  newImageTopic.addSubscription(
+      new subs.SqsSubscription(imageProcessQueue, {
+        filterPolicyWithMessageBody: {
+          Records: sns.FilterOrPolicy.policy({
+            s3: sns.FilterOrPolicy.policy({
+              object: sns.FilterOrPolicy.policy({
+                key: sns.FilterOrPolicy.filter(
+                  sns.SubscriptionFilter.stringFilter({
+                    matchPrefixes: ["image"],
+                 })
+
+             ),
+           }),
+         }),
+         }),
+         },
+        rawMessageDelivery: true,
+      })
+ );
+
+ newImageTopic.addSubscription(
+      new subs.SqsSubscription(mailerQ, {
+        filterPolicyWithMessageBody: {
+          Records: sns.FilterOrPolicy.policy({
+            s3: sns.FilterOrPolicy.policy({
+              object: sns.FilterOrPolicy.policy({
+                key: sns.FilterOrPolicy.filter(
+                  sns.SubscriptionFilter.stringFilter({
+                    matchPrefixes: ["image"],
+                  })
+                ),
+              }),
+            }),
+           }),
+         },
+        rawMessageDelivery: true,
+      })
+ );
 
     // Permissions
     imagesBucket.grantRead(processImageFn);
     imagesBucket.grantRead(mailerFn);
     imagesTable.grantReadWriteData(processImageFn);
 
+    new cdk.CfnOutput(this, "SNS Topic ARN", {
+      value: newImageTopic.topicArn ,
+     });
 
     // Output
     new cdk.CfnOutput(this, "bucketName", {
