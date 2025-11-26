@@ -33,8 +33,6 @@ export class EDAAppStack extends cdk.Stack {
         displayName: "New Image topic",
     }); 
 
-    newImageTopic.addSubscription(new subs.SqsSubscription(imageProcessQueue));
-
     const mailerTopic = new sns.Topic(this, "MailerTopic", {
       displayName: "Mailer topic",
     });
@@ -69,7 +67,7 @@ export class EDAAppStack extends cdk.Stack {
       "addMetadataFn",
  {
         runtime: lambda.Runtime.NODEJS_20_X,
-        entry: `${__dirname}/../lambdas/addImageMetadata.ts`,
+        entry: `${__dirname}/../lambdas/addImagesMetadata.ts`,
         timeout: cdk.Duration.seconds(15),
         memorySize: 128,
         environment: {
